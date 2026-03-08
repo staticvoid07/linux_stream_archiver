@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# App runtime files
+stream_archiver/.env
+stream_archiver/status.json
+stream_archiver/status.json.tmp
+*.pickle
+*.log
+upload_history.json
+client_secrets.json
+
+# Downloads folder
+twitch_downloads/

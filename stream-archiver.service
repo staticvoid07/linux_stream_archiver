@@ -1,0 +1,31 @@
+[Unit]
+Description=Twitch Stream Archiver with YouTube Upload
+Documentation=https://github.com/youruser/linux_stream_archiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=archiver
+Group=archiver
+WorkingDirectory=/opt/stream-archiver
+ExecStart=/opt/stream-archiver/venv/bin/python -m stream_archiver
+Restart=on-failure
+RestartSec=30s
+
+# stdout/stderr go to journald (query with: journalctl -u stream-archiver -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stream-archiver
+
+# Allow up to 90 seconds for active recordings to finalize MKV on SIGTERM
+TimeoutStopSec=90
+
+# Increase open file limit for large recordings
+LimitNOFILE=65536
+
+# Load .env from the package directory
+# Alternatively, use: EnvironmentFile=/opt/stream-archiver/stream_archiver/.env
+
+[Install]
+WantedBy=multi-user.target
