@@ -1,21 +1,31 @@
 """Headless YouTube OAuth flow for initial token setup.
 
-Run once interactively via SSH:
-    python -m stream_archiver --auth-youtube
+Uses SSH port forwarding so the OAuth callback reaches the server without a browser.
 
-The script prints an authorization URL. Open it in any browser (on any machine),
-complete the Google sign-in, then paste the returned code back here.
-The token is saved to disk and will auto-refresh indefinitely from that point.
+Setup (two terminals needed):
+
+  Terminal 1 - on the SERVER:
+      python -m stream_archiver --auth-youtube
+
+  Terminal 2 - on your LOCAL machine:
+      ssh -L 8085:localhost:8085 your_user@your_server_ip
+
+Then open the printed URL in your local browser. The OAuth redirect to
+localhost:8085 is forwarded through the SSH tunnel back to the server.
+Token is saved to disk and auto-refreshes indefinitely after that.
 """
 
 import os
+import pickle
 import logging
 
 logger = logging.getLogger(__name__)
 
+AUTH_PORT = 8085
+
 
 def run_auth_flow(config):
-    """Interactive headless OAuth via run_console(). Saves token to disk."""
+    """OAuth via local server + SSH port forwarding. Saves token to disk."""
     from google_auth_oauthlib.flow import InstalledAppFlow
 
     secrets = config.youtube_client_secrets
@@ -27,28 +37,30 @@ def run_auth_flow(config):
         return
 
     print("\n=== YouTube Authentication ===")
-    print("This will open a browser authorization URL.")
-    print("If running on a remote server, copy the URL to a local browser,")
-    print("complete the sign-in, then paste the authorization code back here.\n")
+    print(f"STEP 1 - Open a NEW terminal on your LOCAL machine and run:")
+    print(f"\n    ssh -L {AUTH_PORT}:localhost:{AUTH_PORT} <your_user>@<your_server_ip>\n")
+    print(f"STEP 2 - Keep that tunnel open, then press Enter here to continue.")
+    input()
 
     flow = InstalledAppFlow.from_client_secrets_file(secrets, config.youtube_scopes)
 
-    # run_console() prints the auth URL and reads the code from stdin.
-    # Works over SSH with no display required.
-    creds = flow.run_console()
+    print(f"Starting auth server on localhost:{AUTH_PORT} ...")
+    print(f"A URL will appear below. Open it in your local browser.\n")
+
+    # open_browser=False because there's no browser on the server.
+    # The SSH tunnel forwards localhost:AUTH_PORT on your local machine
+    # to localhost:AUTH_PORT on the server, so the OAuth redirect works.
+    creds = flow.run_local_server(port=AUTH_PORT, open_browser=False)
 
     token_file = config.youtube_token_file
 
-    # Ensure parent directory exists
     token_dir = os.path.dirname(token_file)
     if token_dir:
         os.makedirs(token_dir, exist_ok=True)
 
-    import pickle
     with open(token_file, "wb") as f:
         pickle.dump(creds, f)
 
-    # Restrict token file permissions (contains sensitive OAuth credentials)
     os.chmod(token_file, 0o600)
 
     print(f"\nAuthentication successful!")
