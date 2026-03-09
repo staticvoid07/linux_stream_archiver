@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stream Archiver</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0e0e10;
+      color: #efeff1;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #9147ff;
+    }
+
+    #last-updated {
+      font-size: 0.8rem;
+      color: #adadb8;
+      margin-left: auto;
+    }
+
+    #disconnected-banner {
+      display: none;
+      width: 100%;
+      background: #c0392b;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    /* ── Channel grid ────────────────────────────────────── */
+    #channels {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .channel-card {
+      background: #18181b;
+      border-radius: 8px;
+      padding: 16px;
+      border-left: 4px solid #3a3a3d;
+      position: relative;
+    }
+
+    .channel-card.recording { border-left-color: #9147ff; }
+    .channel-card.offline   { border-left-color: #3a3a3d; opacity: 0.7; }
+    .channel-card.idle      { border-left-color: #f0a500; }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .channel-name {
+      font-weight: 700;
+      font-size: 1rem;
+    }
+
+    .state-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .state-badge.recording { background: #9147ff; color: #fff; }
+    .state-badge.offline   { background: #3a3a3d; color: #adadb8; }
+    .state-badge.idle      { background: #f0a500; color: #0e0e10; }
+
+    .card-game {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #efeff1;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-title {
+      font-size: 0.8rem;
+      color: #adadb8;
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 0.8rem;
+      color: #adadb8;
+    }
+
+    .card-meta span { display: flex; align-items: center; gap: 4px; }
+
+    /* ── Upload panel ────────────────────────────────────── */
+    #upload-panel {
+      display: none;
+      background: #18181b;
+      border-radius: 8px;
+      padding: 16px;
+      border-left: 4px solid #3498db;
+    }
+
+    #upload-panel h2 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #3498db;
+      margin-bottom: 10px;
+    }
+
+    .upload-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .upload-file {
+      font-size: 0.85rem;
+      color: #efeff1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 60%;
+    }
+
+    .upload-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.8rem;
+      color: #adadb8;
+    }
+
+    .queue-badge {
+      background: #2d2d30;
+      border-radius: 12px;
+      padding: 2px 10px;
+    }
+
+    .progress-bar-track {
+      background: #2d2d30;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: #3498db;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+
+    .progress-pct {
+      text-align: right;
+      font-size: 0.75rem;
+      color: #adadb8;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#9679; Stream Archiver</h1>
+  <span id="last-updated">Connecting...</span>
+  <div id="disconnected-banner">&#9888; DISCONNECTED — open SSH tunnel: ssh -L 8080:localhost:8080 user@server</div>
+</header>
+
+<div id="channels"></div>
+<div id="upload-panel">
+  <h2>Uploading to YouTube</h2>
+  <div class="upload-info">
+    <span class="upload-file" id="upload-file"></span>
+    <span class="upload-right">
+      <span id="upload-channel"></span>
+      <span class="queue-badge" id="upload-queue" style="display:none"></span>
+    </span>
+  </div>
+  <div class="progress-bar-track">
+    <div class="progress-bar-fill" id="upload-bar" style="width:0%"></div>
+  </div>
+  <div class="progress-pct" id="upload-pct">0%</div>
+</div>
+
+<script>
+  const STATUS_URL = 'http://localhost:8080/status';
+  const POLL_MS = 5000;
+
+  const STATE_LABELS = { recording: 'Recording', offline: 'Offline', idle: 'Idle' };
+
+  function fmtTime(ts) {
+    const d = new Date(ts);
+    return d.toLocaleTimeString();
+  }
+
+  function renderChannels(channels) {
+    const grid = document.getElementById('channels');
+    grid.innerHTML = channels.map(ch => {
+      const state = ch.state || 'idle';
+      const label = STATE_LABELS[state] || state;
+      let meta = '';
+
+      if (state === 'recording') {
+        const viewers = ch.viewer_count > 0
+          ? `<span>&#128065; ${ch.viewer_count.toLocaleString()}</span>` : '';
+        const dur = ch.recording_duration
+          ? `<span>&#9679; ${ch.recording_duration}</span>` : '';
+        const size = ch.recording_size
+          ? `<span>&#128190; ${ch.recording_size}</span>` : '';
+        meta = `<div class="card-meta">${viewers}${dur}${size}</div>`;
+      }
+
+      const game = ch.game
+        ? `<div class="card-game">${esc(ch.game)}</div>` : '';
+      const title = ch.stream_title
+        ? `<div class="card-title">${esc(ch.stream_title)}</div>` : '';
+
+      return `
+        <div class="channel-card ${esc(state)}">
+          <div class="card-header">
+            <span class="channel-name">${esc(ch.name)}</span>
+            <span class="state-badge ${esc(state)}">${esc(label)}</span>
+          </div>
+          ${game}${title}${meta}
+        </div>`;
+    }).join('');
+  }
+
+  function renderUpload(upload) {
+    const panel = document.getElementById('upload-panel');
+    if (!upload || !upload.is_uploading) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = 'block';
+    document.getElementById('upload-file').textContent = upload.current_file || '';
+    document.getElementById('upload-channel').textContent = upload.current_channel || '';
+
+    const queueEl = document.getElementById('upload-queue');
+    if (upload.queue_size > 0) {
+      queueEl.textContent = `+${upload.queue_size} in queue`;
+      queueEl.style.display = '';
+    } else {
+      queueEl.style.display = 'none';
+    }
+
+    const pct = upload.progress || 0;
+    document.getElementById('upload-bar').style.width = pct + '%';
+    document.getElementById('upload-pct').textContent = pct.toFixed(1) + '%';
+  }
+
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch(STATUS_URL);
+      const data = await res.json();
+
+      document.getElementById('disconnected-banner').style.display = 'none';
+      document.getElementById('last-updated').textContent =
+        'Updated ' + fmtTime(data.last_updated);
+
+      renderChannels(data.channels || []);
+      renderUpload(data.upload);
+    } catch (e) {
+      document.getElementById('disconnected-banner').style.display = 'block';
+      document.getElementById('last-updated').textContent = 'Last attempt: ' + new Date().toLocaleTimeString();
+    }
+  }
+
+  poll();
+  setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>
